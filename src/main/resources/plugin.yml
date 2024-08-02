@@ -4,6 +4,8 @@ version: "${VERSION}"
 api-version: "1.16"
 author: Uxzylon
 description: Place Satelite Map
+depend:
+  - BKCommonLib
 commands:
   satmap:
     description: Place Satelite Map
