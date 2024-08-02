@@ -1,63 +1,45 @@
-# CustomModelTools
+# SatMap
 
-Spigot Plugin with tools for CustomModelData.
+Spigot Plugin that allows you to place satellite images in Minecraft.
+
+BKCommonLib is required : https://github.com/bergerhealer/BKCommonLib
 
 ## Features
 
-- Enforce ResourcePack Download
-- Parsing of CustomModelData from the ResourcePack
-- Give and Place CustomModelData Items by Category and Name
-- Position and Rotation Editor
+- Load and preview satellite images using lat/lon coordinates
+- Place satellite images in Minecraft by converting pixel colors to blocks
+- Rotate maps using x, y, z angles
+- Blacklist certain blocks from being placed
 
 ## How it works
 
-Your resource pack will obviously need to be configured to use CustomModelData.
+The plugin will download the minecraft client jar corresponding to the server version and extract the block textures from it. It will then use these textures to convert the pixel colors of the satellite image to blocks and items.
 
-The plugin will search for items in "assets/minecraft/models/item/"
+When loading a satellite image, the plugin will download images from Google Maps and display it on a map item.
 
-From there, it will look for the "predicate" fields in the json files, then the "custom_model_data" field and "model" field.
-
-The category will be the first part of the "model" field without the namespace (e.g. "item" in "mypack:item/mymodel").
-
-The name will be the second part of the "model" field without the namespace (e.g. "mymodel" in "mypack:item/mymodel").
-
-The plugin will then use the category and name in the commands and in the tab completion.
+When placing a satellite image, the plugin will convert the pixel colors of the image to blocks. The blocks will then be placed at the player's location, with the specified rotations.
 
 ## Commands
 
-- `/model3d` - Main Command
-- `/model3d reload` - Reloads the Plugin
-- `/model3d give` - Opens a GUI to get a CustomModelData Item
-- `/model3d give <category> <name>` - Gives the Player the Item with the given Category and Name
-- `/model3d place` - Opens a GUI to place a CustomModelData Item
-- `/model3d place <category> <name>` - Places the Item with the given Category and Name at the Players Location
-- `/model3d select` - Selects the nearest ArmorStand
-- `/model3d unselect` - Deselects the selected ArmorStand
-- `/model3d move` - Moves the selected ArmorStand using a GUI
-- `/model3d switch` - Switches the selected CustomModelData between ArmorStand Hand and Head
-- `/model3d remove` - Removes the selected ArmorStand
+- `/satmap` - Main Command
+- `/satmap reload` - Reloads the Plugin
+
+
+- `/satmap load <lat> <lon> <width> <height> <ratio>` - Loads a Satellite Image. `<lat>` and `<lon>` are the GPS coordinates of the center of the image. `<width>` and `<height>` are the dimensions of the image in meters and `<ratio>` is the number of blocks per meter (1.0 will make 1 block = 1 meter).
+
+
+- `/satmap place <x_rotation> <y_rotation> <z_rotation>` - Places the loaded Satellite Image with the specified rotations ("90 0 0" will make the image flat and face south).
 
 ## Permissions
 
-- `custommodeltools.command.reload` - Allows the use of `/model3d reload`
-- `custommodeltools.command.give` - Allows the use of `/model3d give`
-- `custommodeltools.command.place` - Allows the use of `/model3d place`
-- `custommodeltools.command.select` - Allows the use of `/model3d select`
-- `custommodeltools.command.unselect` - Allows the use of `/model3d unselect`
-- `custommodeltools.command.move` - Allows the use of `/model3d move`
-- `custommodeltools.command.switch` - Allows the use of `/model3d switch`
-- `custommodeltools.command.remove` - Allows the use of `/model3d remove`
-- `custommodeltools.command.*` - Allows the use of all commands
-- `custommodeltools.bypass.resourcepack` - Allows the Player to bypass the ResourcePack Download
-- `custommodeltools.bypass.*` - Allows the Player to bypass all restrictions
-- `custommodeltools.*` - Allows everything
+- `satmap.command.reload` - Allows the use of `/satmap reload`
+- `satmap.command.place` - Allows the use of `/satmap place`
+- `satmap.command.load` - Allows the use of `/satmap load`
+- `satmap.command.*` - Allows the use of all commands
+- `satmap.*` - Allows everything
 
 ## Config
 
 Every text in the plugin can be changed in the config.yml.
 
-You also have several options to change the behavior of the plugin:
-
-- `ResourcePack.url` - The URL to the ResourcePack
-- `ResourcePack.hash` - The SHA-1 Hash of the ResourcePack
-- `ResourcePack.kickOnFail` - Whether to kick the Player if the ResourcePack isn't applied
+You can also edit the blocks that are blacklisted from being placed. You just need to edit the `forbidden-blocks` list with the `Material` names of the blocks you want to blacklist.
