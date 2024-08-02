@@ -6,50 +6,72 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
-import com.uxzylon.satmap.Texture.Side;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import static com.uxzylon.satmap.Texture.getBlockOrientationType;
-import static com.uxzylon.satmap.SatMap.plugin;
+import static com.uxzylon.satmap.SatMap.*;
+import static com.uxzylon.satmap.Text.sendMessage;
 
 public class RGBBlockColor {
-
-    public String[] textures;
-    public HashMap<String, BlockData> blockDataMap = new HashMap<>();
+    public List<Texture> textures;
+    public List<Material> forbiddenMaterials = new ArrayList<>();
 
     public RGBBlockColor() {
-        File clientJar = downloadClientJar();
-        mapTexturesToBlockData(clientJar);
+        updateForbiddenMaterials();
+        parseTextures(downloadClientJar());
     }
 
-    private void mapTexturesToBlockData(File clientJar) {
+    public void updateForbiddenMaterials() {
+        forbiddenMaterials.clear();
+        for (String materialName : plugin.getConfig().getStringList("forbidden-blocks")) {
+            try {
+                Material material = Material.valueOf(materialName);
+                forbiddenMaterials.add(material);
+            } catch (IllegalArgumentException e) {
+                sendMessage(console, Text.invalidMaterial, materialName);
+            }
+        }
+    }
+
+    private void parseTextures(File clientJar) {
+        List<Texture> textures = new ArrayList<>();
         try (ZipInputStream zipInputStream = new ZipInputStream(new FileInputStream(clientJar))) {
             ZipEntry zipEntry;
             while ((zipEntry = zipInputStream.getNextEntry()) != null) {
                 if (zipEntry.getName().startsWith("assets/minecraft/textures/block/") && zipEntry.getName().endsWith(".png")) {
-                    String texture = zipEntry.getName().replace("assets/minecraft/textures/block/", "").replace(".png", "");
-                    if (texture.contains("/")) {
+                    String textureName = zipEntry.getName().replace("assets/minecraft/textures/block/", "").replace(".png", "");
+                    if (textureName.contains("/")) {
                         continue;
                     }
-                    if (textures == null) {
-                        textures = new String[]{texture};
-                    } else {
-                        String[] newTextures = new String[textures.length + 1];
-                        System.arraycopy(textures, 0, newTextures, 0, textures.length);
-                        newTextures[textures.length] = texture;
-                        textures = newTextures;
+                    // get the texture image
+                    BufferedImage textureImage = ImageIO.read(zipInputStream);
+                    if (textureImage == null) {
+                        continue;
+                    }
+
+                    Texture newTexture = new Texture(textureName, textureImage);
+                    if (newTexture.isValid()) {
+                        textures.add(newTexture);
                     }
                 }
             }
-            plugin.getLogger().info("Discovered " + textures.length + " block textures!");
         } catch (IOException e) {
-            plugin.getLogger().warning("Failed to open client jar: " + e.getMessage());
+            sendMessage(console, Text.failOpenClientJar, e.getMessage());
         }
+
+        sendMessage(console, Text.discoveredTextures, textures.size());
+
+        this.textures = textures;
+        processTextures();
     }
 
     private File downloadClientJar() {
@@ -70,7 +92,7 @@ public class RGBBlockColor {
                     }
                 }
             } catch (IOException e) {
-                plugin.getLogger().warning("Failed to open client jar: " + e.getMessage());
+                sendMessage(console, Text.failOpenClientJar, e.getMessage());
             }
         }
 
@@ -89,7 +111,7 @@ public class RGBBlockColor {
             InputStream versionManifestStream = new URL(versionManifestUrl).openStream();
             versionManifest = JsonParser.parseReader(new InputStreamReader(versionManifestStream)).getAsJsonObject();
         } catch (IOException e) {
-            plugin.getLogger().warning("Failed to download version manifest: " + e.getMessage());
+            sendMessage(console, Text.failDownloadVersionManifest, e.getMessage());
         }
 
         if (versionManifest == null) {
@@ -107,7 +129,7 @@ public class RGBBlockColor {
         }
 
         if (versionUrl == null) {
-            plugin.getLogger().warning("Version not found: " + version);
+            sendMessage(console, Text.versionNotFound, version);
             return;
         }
 
@@ -117,7 +139,7 @@ public class RGBBlockColor {
             InputStream versionJsonStream = new URL(versionUrl).openStream();
             versionJson = JsonParser.parseReader(new InputStreamReader(versionJsonStream)).getAsJsonObject();
         } catch (IOException e) {
-            plugin.getLogger().warning("Failed to download version json: " + e.getMessage());
+            sendMessage(console, Text.failDownloadVersionJson, e.getMessage());
         }
 
         if (versionJson == null) {
@@ -137,11 +159,11 @@ public class RGBBlockColor {
         try {
             clientJar.createNewFile();
         } catch (IOException e) {
-            plugin.getLogger().warning("Failed to create client jar file: " + e.getMessage());
+            sendMessage(console, Text.failCreateClientJar, e.getMessage());
             return;
         }
 
-        plugin.getLogger().info("Downloading client jar: " + clientJarUrl);
+        sendMessage(console, Text.downloadingClientJar, clientJarUrl);
         try {
             BufferedInputStream in = new BufferedInputStream(new URL(clientJarUrl).openStream());
             FileOutputStream fileOutputStream = new FileOutputStream(clientJar);
@@ -151,7 +173,7 @@ public class RGBBlockColor {
                 fileOutputStream.write(dataBuffer, 0, bytesRead);
             }
         } catch (IOException e) {
-            plugin.getLogger().warning("Failed to download client jar: " + e.getMessage());
+            sendMessage(console, Text.failDownloadClientJar, e.getMessage());
             return;
         }
 
@@ -159,187 +181,54 @@ public class RGBBlockColor {
             InputStream clientJarStream = new URL(clientJarUrl).openStream();
             String sha1 = DigestUtils.sha1Hex(clientJarStream);
             if (sha1.equals(clientJarSha1)) {
-                plugin.getLogger().info("Client jar downloaded: " + clientJar.getAbsolutePath());
+                sendMessage(console, Text.downloadedClientJar, clientJar.getAbsolutePath());
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to download client jar: " + e.getMessage());
+            sendMessage(console, Text.failDownloadClientJar, e.getMessage());
         }
     }
 
-    public void generateColorMap(BlockFace playerFacing) {
-        blockDataMap.clear();
-
-        HashMap<String, Material> materialMap = new HashMap<>();
-        HashMap<Material, Texture.BlockOrientation> blockOrientation = new HashMap<>();
-        HashMap<Material, String[]> textureSides = new HashMap<>();
-
-        String variantRegex = "_front|_side|_top|_bottom|_back";
-
-        for (String texture : textures) {
-            String blockName = texture.replaceAll(variantRegex, "");
-            Material material = Material.getMaterial(blockName.toUpperCase());
-            if (material == null) {
-                plugin.getLogger().info("Material not found: " + texture);
-                continue;
-            }
-            if (!material.isBlock() || material.isAir() || !material.isOccluding()) {
-                // plugin.getLogger().info("Material is not suitable: " + texture);
-                continue;
-            }
-            materialMap.put(texture, material);
-
-            Texture.BlockOrientation orientation = getBlockOrientationType(material);
-            blockOrientation.put(material, orientation);
-
-            String blockSide = texture.replace(blockName + "_", "");
-            if (blockSide.equals(blockName)) {
-                blockSide = "";
-            }
-
-            textureSides.computeIfAbsent(material, k -> new String[0]);
-            String[] sides = textureSides.get(material);
-            String[] newSides = new String[sides.length + 1];
+    private void updateTexturesAvailableSides() {
+        HashMap<Material, Texture.Side[]> textureSides = new HashMap<>();
+        for (Texture texture : textures) {
+            textureSides.putIfAbsent(texture.material, new Texture.Side[0]);
+            Texture.Side side = texture.side;
+            Texture.Side[] sides = textureSides.get(texture.material);
+            Texture.Side[] newSides = new Texture.Side[sides.length + 1];
             System.arraycopy(sides, 0, newSides, 0, sides.length);
-            newSides[sides.length] = blockSide;
-            textureSides.put(material, newSides);
+            newSides[sides.length] = side;
+            textureSides.put(texture.material, newSides);
         }
 
-        for (String texture : textures) {
-            Material material = materialMap.get(texture);
-            if (material == null) {
-                continue;
-            }
-            Texture.BlockOrientation orientation = blockOrientation.get(material);
-            String[] textureSidesArray = textureSides.get(material);
-            String blockName = texture.replaceAll(variantRegex, "");
-            String blockSide = texture.replaceAll(blockName, "").replaceAll("_", "");
-
-            BlockData blockData;
-            if (textureSidesArray.length == 1) {
-                blockData = material.createBlockData("");
-            } else {
-                blockData = createBlockDataForOrientation(new Texture(blockSide, textureSidesArray, material, orientation), playerFacing);
-            }
-
-            if (blockData == null) {
-                plugin.getLogger().info("Block data " + texture + " not visible from player facing " + playerFacing);
-                continue;
-            }
-
-            blockDataMap.put(texture, blockData);
+        for (Texture texture : textures) {
+            texture.addAvailableSides(textureSides.get(texture.material));
         }
     }
-    
-    private BlockData createBlockDataForOrientation(Texture texture, BlockFace playerFacing) {
-        return switch (texture.orientation) {
-            case AXIS -> createBlockDataForAxis(texture, playerFacing);
-            case FACING, FACING_NO_VERTICAL -> createBlockDataForFacing(texture, playerFacing);
-            default -> createBlockDataForNonRotatable(texture, playerFacing);
-        };
-    }
-    
-    private BlockData createBlockDataForAxis(Texture texture, BlockFace playerFacing) {
-        return switch (playerFacing) {
-            case NORTH, SOUTH -> switch (texture.currentSide) {
-                case TOP, BOTTOM -> texture.material.createBlockData("[axis=z]");
-                case NONE, SIDE -> texture.material.createBlockData("[axis=y]");
-                default -> null;
-            };
-            case EAST, WEST -> switch (texture.currentSide) {
-                case TOP, BOTTOM -> texture.material.createBlockData("[axis=x]");
-                case NONE, SIDE -> texture.material.createBlockData("[axis=y]");
-                default -> null;
-            };
-            case UP, DOWN -> switch (texture.currentSide) {
-                case TOP, BOTTOM -> texture.material.createBlockData("[axis=y]");
-                case NONE, SIDE -> texture.material.createBlockData("[axis=x]");
-                default -> null;
-            };
-            default -> null;
-        };
-    }
-    
-    private BlockData createBlockDataForFacing(Texture texture, BlockFace playerFacing) {
-        return switch (playerFacing) {
-            case NORTH -> switch (texture.currentSide) {
-                case FRONT -> texture.material.createBlockData("[facing=south]");
-                case SIDE -> texture.material.createBlockData("[facing=west]");
-                case BACK -> texture.material.createBlockData("[facing=north]");
-                case TOP -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                case BOTTOM -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                default -> null;
-            };
-            case EAST -> switch (texture.currentSide) {
-                case FRONT -> texture.material.createBlockData("[facing=west]");
-                case SIDE -> texture.material.createBlockData("[facing=north]");
-                case BACK -> texture.material.createBlockData("[facing=east]");
-                case TOP -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                case BOTTOM -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                default -> null;
-            };
-            case SOUTH -> switch (texture.currentSide) {
-                case FRONT -> texture.material.createBlockData("[facing=north]");
-                case SIDE -> texture.material.createBlockData("[facing=east]");
-                case BACK -> texture.material.createBlockData("[facing=south]");
-                case TOP -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                case BOTTOM -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                default -> null;
-            };
-            case WEST -> switch (texture.currentSide) {
-                case FRONT -> texture.material.createBlockData("[facing=east]");
-                case SIDE -> texture.material.createBlockData("[facing=south]");
-                case BACK -> texture.material.createBlockData("[facing=west]");
-                case TOP -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                case BOTTOM -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                default -> null;
-            };
-            case UP -> switch (texture.currentSide) {
-                case BOTTOM -> texture.material.createBlockData("");
-                case TOP, FRONT -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                case NONE -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=north]") : null;
-                case BACK -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                default -> null;
-            };
-            case DOWN -> switch (texture.currentSide) {
-                case TOP -> texture.material.createBlockData("");
-                case BOTTOM, FRONT -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=up]") : null;
-                case NONE -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=north]") : null;
-                case BACK -> texture.orientation == Texture.BlockOrientation.FACING ? texture.material.createBlockData("[facing=down]") : null;
-                default -> null;
-            };
-            default -> null;
-        };
+
+    private void fillTexturesBlockDataMap() {
+        textures.forEach(Texture::fillBlockDataMap);
     }
 
-    private BlockData createBlockDataForNonRotatable(Texture texture, BlockFace playerFacing) {
-        BlockData blockData = null;
-        if (texture.equals(Side.FRONT) && texture.contains(Side.SIDE) && texture.contains(Side.TOP) && !texture.contains(Side.BOTTOM)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.SOUTH || playerFacing == BlockFace.EAST);
-        } else if (texture.equals(Side.FRONT) && texture.contains(Side.SIDE) && texture.contains(Side.TOP) && texture.contains(Side.BOTTOM)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.SOUTH || playerFacing == BlockFace.NORTH);
-        } else if (texture.equals(Side.SIDE) && texture.contains(Side.TOP) && texture.contains(Side.BOTTOM) && texture.contains(Side.FRONT)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.WEST || playerFacing == BlockFace.EAST);
-        } else if (texture.equals(Side.SIDE) && texture.contains(Side.TOP) && !texture.contains(Side.BOTTOM) && texture.contains(Side.FRONT)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.WEST || playerFacing == BlockFace.NORTH);
-        } else if (texture.equals(Side.SIDE) && texture.contains(Side.TOP) && !texture.contains(Side.BOTTOM) && !texture.contains(Side.FRONT)) {
-            blockData = texture.createEmptyBlockData(playerFacing != BlockFace.DOWN);
-        } else if (texture.equals(Side.SIDE) && texture.contains(Side.BOTTOM) && !texture.contains(Side.TOP)) {
-            blockData = texture.createEmptyBlockData(playerFacing != BlockFace.UP);
-        } else if (texture.equals(Side.SIDE) && !texture.contains(Side.TOP)) {
-            blockData = texture.createEmptyBlockData(playerFacing != BlockFace.DOWN && playerFacing != BlockFace.UP);
-        } else if (texture.equals(Side.NONE)) {
-            blockData = texture.createEmptyBlockData(playerFacing != BlockFace.DOWN && playerFacing != BlockFace.UP);
-        } else if (texture.equals(Side.TOP) && texture.contains(Side.SIDE) && !texture.contains(Side.BOTTOM)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.DOWN);
-        } else if (texture.equals(Side.TOP) && !texture.contains(Side.BOTTOM)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.DOWN || playerFacing == BlockFace.UP);
-        } else if (texture.equals(Side.BOTTOM) && !texture.contains(Side.TOP)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.UP || playerFacing == BlockFace.DOWN);
-        } else if (texture.equals(Side.TOP)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.DOWN);
-        } else if (texture.equals(Side.BOTTOM)) {
-            blockData = texture.createEmptyBlockData(playerFacing == BlockFace.UP);
+    private void processTextures() {
+        sendMessage(console, Text.updatingAvailableSides);
+        updateTexturesAvailableSides();
+        sendMessage(console, Text.fillingBlockDataMap);
+        fillTexturesBlockDataMap();
+    }
+
+    public BlockData getBlockDataFromColor(Color color, BlockFace direction) {
+        Texture closestTexture = null;
+        double closestDistance = Double.MAX_VALUE;
+        for (Texture texture : textures) {
+            double distance = texture.colorDistance(color);
+            if (distance < closestDistance && texture.blockDataMap.get(direction) != null && !forbiddenMaterials.contains(texture.material)) {
+                closestTexture = texture;
+                closestDistance = distance;
+            }
         }
-        return blockData;
+        if (closestTexture == null) {
+            return null;
+        }
+        return closestTexture.blockDataMap.get(direction);
     }
 }

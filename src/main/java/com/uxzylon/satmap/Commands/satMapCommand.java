@@ -1,6 +1,7 @@
 package com.uxzylon.satmap.Commands;
 
 import com.uxzylon.satmap.Commands.subcommands.*;
+import com.uxzylon.satmap.Text;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -10,13 +11,16 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static com.uxzylon.satmap.SatMap.plugin;
+import static com.uxzylon.satmap.SatMap.*;
+import static com.uxzylon.satmap.Text.sendMessage;
 
 public class satMapCommand implements TabExecutor {
 
     private final ArrayList<SubCommand> subCommands = new ArrayList<>();
     public satMapCommand() {
-        subCommands.add(new test());
+        subCommands.add(new Place());
+        subCommands.add(new Load());
+        subCommands.add(new Reload());
     }
 
     public ArrayList<SubCommand> getSubCommands() {
@@ -24,49 +28,58 @@ public class satMapCommand implements TabExecutor {
     }
 
     public void help(Player player) {
-        player.sendMessage("Satmap");
+        sendMessage(player, Text.title, pluginName);
         for (int i=0; i < getSubCommands().size(); i++) {
             if (player.hasPermission(getSubCommands().get(i).permission())) {
-                player.sendMessage(getSubCommands().get(i).getSyntax() + " - " + ChatColor.GRAY + getSubCommands().get(i).getDescription());
+                sendMessage(player, getSubCommands().get(i).getSyntax() + " - " + ChatColor.GRAY + getSubCommands().get(i).getDescription());
             }
         }
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        if (sender instanceof Player player) {
-            if (args.length > 0) {
-                boolean found = false;
-                for (int i=0; i < getSubCommands().size(); i++) {
-                    if (args[0].equalsIgnoreCase(getSubCommands().get(i).getName())) {
-                        found = true;
-                        if (player.hasPermission(getSubCommands().get(i).permission())) {
-                            getSubCommands().get(i).perform(player, args);
-                        } else {
-                            player.sendMessage("You don't have permission to run this command.");
-                        }
-                    }
-                }
-                if (!found) {
-                    help(player);
-                }
-            } else {
+        if (args.length == 0) {
+            if (sender instanceof Player player) {
                 help(player);
             }
-        } else {
-            if (args.length > 0) {
-                for (int i=0; i < getSubCommands().size(); i++) {
-                    if (args[0].equalsIgnoreCase(getSubCommands().get(i).getName())) {
-                        if (getSubCommands().get(i).canRunConsole()) {
-                            getSubCommands().get(i).perform(null, args);
-                        } else {
-                            plugin.getLogger().info("This command can't be run from console.");
-                        }
-                    }
+            return true;
+        }
+
+        for (SubCommand subCommand : getSubCommands()) {
+            if (args[0].equalsIgnoreCase(subCommand.getName())) {
+                if (sender instanceof Player player) {
+                    handlePlayerCommand(player, subCommand, args);
+                } else {
+                    handleConsoleCommand(subCommand, args);
                 }
+                return true;
             }
         }
+
+        if (sender instanceof Player player) {
+            help(player);
+        }
         return true;
+    }
+
+    private void handlePlayerCommand(Player player, SubCommand subCommand, String[] args) {
+        if (player.hasPermission(subCommand.permission())) {
+            if (subCommand.getMinArgs() <= args.length) {
+                subCommand.perform(player, args);
+            } else {
+                sendMessage(player, subCommand.getSyntax());
+            }
+        } else {
+            sendMessage(player, Text.noPermission);
+        }
+    }
+
+    private void handleConsoleCommand(SubCommand subCommand, String[] args) {
+        if (subCommand.canRunConsole()) {
+            subCommand.perform(null, args);
+        } else {
+            sendMessage(console, Text.playerOnly);
+        }
     }
 
     @Override

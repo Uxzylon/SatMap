@@ -10,8 +10,18 @@ commands:
     usage: /<command> <function>
     permission: satmap.command
 permissions:
-  satmap.command.test:
-    description: placeholder
+  satmap.command.load:
+    description: Load Satelite Map
+    default: op
+    children:
+      satmap.command: true
+  satmap.command.place:
+    description: Place Satelite Map
+    default: op
+    children:
+      satmap.command: true
+  satmap.command.reload:
+    description: Reload Satelite Map
     default: op
     children:
       satmap.command: true
@@ -20,9 +30,10 @@ permissions:
     default: false
     children:
       satmap.command: true
-      satmap.bypass: true
   satmap.command.*:
     description: Grants all permissions for commands
     default: false
     children:
-      satmap.command.test: true
+      satmap.command.place: true
+      satmap.command.load: true
+      satmap.command.reload: true
